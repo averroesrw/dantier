@@ -27,7 +27,14 @@ jobs:
       - name: Build app
         run: bun run build
 
+      - name: Cloudflare token check
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN == '' }}
+        run: |
+          echo "::warning::Missing CLOUDFLARE_API_TOKEN repository secret."
+          echo "::warning::Set it in GitHub to enable automatic D1 migration and Pages deploy."
+
       - name: Apply D1 migration
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -35,6 +42,7 @@ jobs:
           command: d1 execute dantier-reservations --remote --file=./migrations/0001_init.sql --yes
 
       - name: Deploy to Pages
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
