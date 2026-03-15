@@ -48,10 +48,9 @@ Workflow soubor:
 
 - `.github/workflows/deploy-cloudflare-pages.yml`
 
-Nutne GitHub secrets:
+Nutny GitHub secret:
 
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
 
 ## Vývojový server
 

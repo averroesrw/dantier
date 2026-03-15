@@ -31,12 +31,12 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: 8bf9f35c1d1b6b09cf839af068469d67
           command: d1 execute dantier-reservations --remote --file=./migrations/0001_init.sql --yes
 
       - name: Deploy to Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: 8bf9f35c1d1b6b09cf839af068469d67
           command: pages deploy dist --project-name dantier --branch main

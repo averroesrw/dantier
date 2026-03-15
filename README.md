@@ -39,10 +39,9 @@ Kompletni ceska dokumentace je ve slozce [docs/README.md](docs/README.md).
 
 Workflow je v [\.github/workflows/deploy-cloudflare-pages.yml](.github/workflows/deploy-cloudflare-pages.yml).
 
-Je potreba nastavit GitHub repository secrets:
+Je potreba nastavit GitHub repository secret:
 
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
 
 Po pushi do `main` workflow:
 
