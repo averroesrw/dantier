@@ -102,9 +102,17 @@ Rezervační formulář v `.glass-card`.
 
 Od 09:00 do 17:00 v 30minutových intervalech.
 
+### Dostupnost casu
+
+Po vyberu data se nacitaji obsazene terminy z databaze (D1). Obsazene casy jsou zobrazeny sede a jsou disabled.
+
+Endpoint:
+
+- `GET /api/reservations?date=YYYY-MM-DD`
+
 ### Odeslání
 
-Formular vola `POST /api/reservations` (Cloudflare Pages Function), ktera ulozi data do D1 databaze.
+Formular vola `POST /api/reservations` (Cloudflare Pages Function), ktera ulozi data do D1 databaze a odesle potvrzovaci email pres Resend.
 
 Po odeslani:
 

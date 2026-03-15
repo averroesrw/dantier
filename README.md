@@ -43,6 +43,14 @@ Je potreba nastavit GitHub repository secret:
 
 - `CLOUDFLARE_API_TOKEN`
 
+## Resend email potvrzeni
+
+Rezervace odesilaji potvrzovaci email pres Resend. V Cloudflare Pages nastavte:
+
+- `RESEND_API_KEY` (secret)
+- `RESEND_FROM_EMAIL`
+- `RESEND_FROM_NAME` (volitelne)
+
 Po pushi do `main` workflow:
 
 1. postavi frontend,
