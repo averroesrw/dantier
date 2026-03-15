@@ -42,6 +42,20 @@ bun run build
 wrangler pages deploy dist --project-name dantier --branch main
 ```
 
+### Resend email potvrzeni
+
+Rezervacni emaily odesila Resend API. Pro produkci nastavte:
+
+- Pages secret `RESEND_API_KEY`
+- Pages variable `RESEND_FROM_EMAIL` (napr. `noreply@dantier.cz`)
+- Volitelne `RESEND_FROM_NAME` (napr. `Dantier`)
+
+Priklad (lokalne):
+
+```bash
+wrangler pages secret put RESEND_API_KEY
+```
+
 ### CI/CD z GitHub
 
 Workflow soubor:

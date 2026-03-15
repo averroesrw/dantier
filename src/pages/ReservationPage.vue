@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 
 interface ReservationApiResponse {
   reservationId?: number
   message?: string
   error?: string
+  emailSent?: boolean
+  emailError?: string
+  reservedTimes?: string[]
+  date?: string
+}
+
+interface CalendarDay {
+  date: string
+  day: number
+  isDisabled: boolean
+  isSelected: boolean
+  isToday: boolean
 }
 
 const form = reactive({
@@ -34,12 +46,52 @@ const times = [
 ]
 
 const apiBase = (import.meta.env.VITE_RESERVATIONS_API_URL ?? '/api').replace(/\/+$/, '')
-const minDate = new Date().toISOString().slice(0, 10)
+const PHONE_RE = /^[+]?([0-9\s()-]{6,20})$/
 
 const isSubmitting = ref(false)
 const submitError = ref('')
+const submitWarning = ref('')
 const submitSuccess = ref('')
 const reservationId = ref<number | null>(null)
+const reservedTimes = ref<string[]>([])
+const isLoadingSlots = ref(false)
+const slotsError = ref('')
+
+const today = new Date()
+today.setHours(0, 0, 0, 0)
+
+const currentMonth = ref(today.getMonth())
+const currentYear = ref(today.getFullYear())
+
+const monthNames = [
+  'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
+  'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec',
+]
+
+const weekdayLabels = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne']
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDate(value: string): Date {
+  const [year, month, day] = value.split('-').map((part) => Number(part))
+  return new Date(year, month - 1, day)
+}
+
+function setSelectedDate(value: string) {
+  const parsed = parseDate(value)
+  if (parsed < today) {
+    return
+  }
+
+  form.date = value
+  currentMonth.value = parsed.getMonth()
+  currentYear.value = parsed.getFullYear()
+}
 
 function resetForm() {
   form.name = ''
@@ -51,11 +103,168 @@ function resetForm() {
   form.note = ''
 }
 
+function isPhoneValid(value: string): boolean {
+  if (!value.trim()) {
+    return true
+  }
+
+  return PHONE_RE.test(value.trim())
+}
+
+const selectedDateLabel = computed(() => {
+  if (!form.date) {
+    return 'Nevybrano'
+  }
+
+  const date = parseDate(form.date)
+  return date.toLocaleDateString('cs-CZ', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+})
+
+const calendarDays = computed(() => {
+  const firstDay = new Date(currentYear.value, currentMonth.value, 1)
+  const totalDays = new Date(currentYear.value, currentMonth.value + 1, 0).getDate()
+  const offset = (firstDay.getDay() + 6) % 7
+  const days: Array<CalendarDay | null> = []
+
+  for (let i = 0; i < offset; i += 1) {
+    days.push(null)
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const dateObj = new Date(currentYear.value, currentMonth.value, day)
+    const dateValue = formatDate(dateObj)
+    const isDisabled = dateObj < today
+
+    days.push({
+      date: dateValue,
+      day,
+      isDisabled,
+      isSelected: form.date === dateValue,
+      isToday: formatDate(today) === dateValue,
+    })
+  }
+
+  return days
+})
+
+const canGoPrevMonth = computed(() => {
+  if (currentYear.value > today.getFullYear()) {
+    return true
+  }
+
+  return currentYear.value === today.getFullYear() && currentMonth.value > today.getMonth()
+})
+
+function goPrevMonth() {
+  if (!canGoPrevMonth.value) {
+    return
+  }
+
+  if (currentMonth.value === 0) {
+    currentMonth.value = 11
+    currentYear.value -= 1
+  } else {
+    currentMonth.value -= 1
+  }
+}
+
+function goNextMonth() {
+  if (currentMonth.value === 11) {
+    currentMonth.value = 0
+    currentYear.value += 1
+  } else {
+    currentMonth.value += 1
+  }
+}
+
+const reservedTimesSet = computed(() => new Set(reservedTimes.value))
+
+function isReserved(time: string): boolean {
+  return reservedTimesSet.value.has(time)
+}
+
+function selectTime(time: string) {
+  if (!form.date || isReserved(time)) {
+    return
+  }
+
+  form.time = time
+}
+
+async function loadReservedTimes(date: string) {
+  isLoadingSlots.value = true
+  slotsError.value = ''
+
+  try {
+    const response = await fetch(`${apiBase}/reservations?date=${encodeURIComponent(date)}`)
+    const payload = (await response.json()) as ReservationApiResponse
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? 'Nepodarilo se nacist obsazene terminy.')
+    }
+
+    reservedTimes.value = Array.isArray(payload.reservedTimes) ? payload.reservedTimes : []
+
+    if (form.time && reservedTimesSet.value.has(form.time)) {
+      form.time = ''
+    }
+  } catch (error) {
+    slotsError.value = error instanceof Error
+      ? error.message
+      : 'Nepodarilo se nacist obsazene terminy.'
+  } finally {
+    isLoadingSlots.value = false
+  }
+}
+
+watch(
+  () => form.date,
+  (value) => {
+    if (!value) {
+      reservedTimes.value = []
+      form.time = ''
+      return
+    }
+
+    loadReservedTimes(value)
+  },
+  { immediate: true }
+)
+
+setSelectedDate(formatDate(today))
+
 async function handleSubmit() {
-  isSubmitting.value = true
   submitError.value = ''
+  submitWarning.value = ''
   submitSuccess.value = ''
   reservationId.value = null
+
+  if (!form.date) {
+    submitError.value = 'Vyberte datum rezervace.'
+    return
+  }
+
+  if (!form.time) {
+    submitError.value = 'Vyberte cas rezervace.'
+    return
+  }
+
+  if (!isPhoneValid(form.phone)) {
+    submitError.value = 'Telefon musi byt prazdny nebo ve spravnem formatu.'
+    return
+  }
+
+  if (isReserved(form.time)) {
+    submitError.value = 'Vybrany termin je obsazeny. Zvolte prosim jiny cas.'
+    return
+  }
+
+  isSubmitting.value = true
 
   try {
     const response = await fetch(`${apiBase}/reservations`, {
@@ -74,13 +283,7 @@ async function handleSubmit() {
       }),
     })
 
-    let payload: ReservationApiResponse | null = null
-
-    try {
-      payload = (await response.json()) as ReservationApiResponse
-    } catch {
-      payload = null
-    }
+    const payload = (await response.json()) as ReservationApiResponse
 
     if (!response.ok) {
       throw new Error(payload?.error ?? 'Nepodarilo se odeslat rezervaci. Zkuste to znovu.')
@@ -88,7 +291,13 @@ async function handleSubmit() {
 
     submitSuccess.value = payload?.message ?? 'Rezervace byla uspesne odeslana.'
     reservationId.value = typeof payload?.reservationId === 'number' ? payload.reservationId : null
+
+    if (payload?.emailSent === false) {
+      submitWarning.value = payload?.emailError ?? 'Potvrzovaci email se nepodarilo odeslat.'
+    }
+
     resetForm()
+    setSelectedDate(formatDate(today))
   } catch (error) {
     submitError.value = error instanceof Error
       ? error.message
@@ -138,7 +347,7 @@ async function handleSubmit() {
         <!-- Phone & service -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label class="block text-xs font-medium tracking-wide text-text-secondary mb-2">Telefon</label>
+            <label class="block text-xs font-medium tracking-wide text-text-secondary mb-2">Telefon (nepovinné)</label>
             <input
               v-model="form.phone"
               type="tel"
@@ -160,43 +369,123 @@ async function handleSubmit() {
         </div>
 
         <!-- Date & time -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label class="block text-xs font-medium tracking-wide text-text-secondary mb-2">Datum</label>
-            <input
-              v-model="form.date"
-              type="date"
-              required
-              :min="minDate"
-              class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent/50 transition-colors"
-            />
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="glass-card p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Vybraný termín</span>
+                <p class="mt-2 text-base text-white capitalize">{{ selectedDateLabel }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="w-9 h-9 rounded-full border border-white/10 text-white/80 hover:text-white transition-colors"
+                  :class="canGoPrevMonth ? 'hover:bg-white/10' : 'opacity-40 cursor-not-allowed'"
+                  :disabled="!canGoPrevMonth"
+                  @click="goPrevMonth"
+                  aria-label="Předchozí měsíc"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  class="w-9 h-9 rounded-full border border-white/10 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                  @click="goNextMonth"
+                  aria-label="Další měsíc"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-semibold text-white">{{ monthNames[currentMonth] }} {{ currentYear }}</h3>
+            </div>
+
+            <div class="grid grid-cols-7 gap-2 text-xs text-text-muted mb-2">
+              <span v-for="label in weekdayLabels" :key="label" class="text-center">{{ label }}</span>
+            </div>
+
+            <div class="grid grid-cols-7 gap-2">
+              <template v-for="(day, index) in calendarDays" :key="day ? day.date : `empty-${index}`">
+                <div v-if="!day" class="h-9" />
+                <button
+                  v-else
+                  type="button"
+                  class="h-9 rounded-lg text-sm font-medium transition-all"
+                  :class="[
+                    day.isDisabled
+                      ? 'bg-white/5 text-text-muted border border-white/5 cursor-not-allowed'
+                      : day.isSelected
+                        ? 'glass-strong text-white'
+                        : 'bg-white/5 text-white border border-white/10 hover:bg-white/10',
+                    day.isToday && !day.isSelected ? 'ring-1 ring-accent/60' : ''
+                  ]"
+                  :disabled="day.isDisabled"
+                  @click="setSelectedDate(day.date)"
+                >
+                  {{ day.day }}
+                </button>
+              </template>
+            </div>
           </div>
-          <div>
-            <label class="block text-xs font-medium tracking-wide text-text-secondary mb-2">Čas</label>
-            <select
-              v-model="form.time"
-              required
-              class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent/50 transition-colors appearance-none"
-            >
-              <option value="" disabled class="bg-surface">Vyberte čas</option>
-              <option v-for="t in times" :key="t" :value="t" class="bg-surface">{{ t }}</option>
-            </select>
+
+          <div class="glass-card p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Dostupné časy</span>
+                <p class="mt-2 text-sm text-text-muted">
+                  {{ form.date ? `Datum: ${form.date}` : 'Nejprve zvolte datum' }}
+                </p>
+              </div>
+              <span v-if="isLoadingSlots" class="text-xs text-text-muted">Načítám...</span>
+            </div>
+
+            <div v-if="slotsError" class="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-100 mb-4">
+              {{ slotsError }}
+            </div>
+
+            <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              <button
+                v-for="time in times"
+                :key="time"
+                type="button"
+                :disabled="!form.date || isReserved(time)"
+                class="rounded-xl py-2 text-sm font-medium transition-all"
+                :class="[
+                  !form.date
+                    ? 'bg-white/5 text-text-muted border border-white/5 cursor-not-allowed'
+                    : isReserved(time)
+                      ? 'bg-neutral-600/40 text-text-muted border border-white/5 cursor-not-allowed'
+                      : form.time === time
+                        ? 'glass-strong text-white'
+                        : 'glass text-white hover:bg-white/10'
+                ]"
+                @click="selectTime(time)"
+              >
+                {{ time }}
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- Note -->
         <div>
-          <label class="block text-xs font-medium tracking-wide text-text-secondary mb-2">Poznámka</label>
+          <label class="block text-xs font-medium tracking-wide text-text-secondary mb-2">Poznámka (nepovinné)</label>
           <textarea
             v-model="form.note"
             rows="3"
             class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-accent/50 transition-colors resize-none"
-            placeholder="Další požadavky..."
+            placeholder="Další požadavky (nepovinné)..."
           ></textarea>
         </div>
 
         <div v-if="submitError" class="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {{ submitError }}
+        </div>
+
+        <div v-if="submitWarning" class="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {{ submitWarning }}
         </div>
 
         <div v-if="submitSuccess" class="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">

@@ -2,6 +2,10 @@ interface D1ResultMeta {
     last_row_id?: number | string
 }
 
+interface D1AllResult<T> {
+    results: T[]
+}
+
 interface D1RunResult {
     meta: D1ResultMeta
 }
@@ -9,6 +13,7 @@ interface D1RunResult {
 interface D1PreparedStatement {
     bind(...values: Array<string | number | null>): D1PreparedStatement
     first<T = Record<string, unknown>>(): Promise<T | null>
+    all<T = Record<string, unknown>>(): Promise<D1AllResult<T>>
     run(): Promise<D1RunResult>
 }
 
@@ -19,6 +24,9 @@ interface D1Database {
 interface Env {
     DB: D1Database
     ALLOWED_ORIGINS?: string
+    RESEND_API_KEY?: string
+    RESEND_FROM_EMAIL?: string
+    RESEND_FROM_NAME?: string
 }
 
 interface ReservationPayload {
@@ -38,11 +46,20 @@ interface ErrorPayload {
 interface SuccessPayload {
     reservationId: number
     message: string
+    emailSent: boolean
+    emailError?: string
+}
+
+interface ReservedSlotsPayload {
+    date: string
+    reservedTimes: string[]
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{2}:\d{2}$/
+const PHONE_RE = /^[+]?([0-9\s()-]{6,20})$/
+const RESEND_API_URL = 'https://api.resend.com/emails'
 
 function corsHeaders(request: Request, env: Env): Record<string, string> {
     const origin = request.headers.get('Origin')
@@ -72,7 +89,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
 function json(
     request: Request,
     env: Env,
-    body: ErrorPayload | SuccessPayload | Record<string, unknown>,
+    body: ErrorPayload | SuccessPayload | ReservedSlotsPayload | Record<string, unknown>,
     status = 200,
 ): Response {
     return new Response(JSON.stringify(body), {
@@ -136,8 +153,8 @@ function validatePayload(payload: unknown): { ok: true; value: ReservationPayloa
         return { ok: false, error: 'Cas nema platny format (HH:MM).' }
     }
 
-    if (phone.length > 32) {
-        return { ok: false, error: 'Telefon je prilis dlouhy.' }
+    if (phone.length > 0 && !PHONE_RE.test(phone)) {
+        return { ok: false, error: 'Telefon ma neplatny format.' }
     }
 
     if (note.length > 1000) {
@@ -155,6 +172,113 @@ function validatePayload(payload: unknown): { ok: true; value: ReservationPayloa
             phone: phone || undefined,
             note: note || undefined,
         },
+    }
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
+function buildEmailHtml(payload: ReservationPayload): string {
+    const name = escapeHtml(payload.name)
+    const service = escapeHtml(payload.service)
+    const date = escapeHtml(payload.date)
+    const time = escapeHtml(payload.time)
+    const phone = payload.phone ? escapeHtml(payload.phone) : '-'
+    const note = payload.note ? escapeHtml(payload.note) : '-'
+
+    return `<!doctype html>
+<html>
+    <body style="margin:0; padding:0; background:#060608; font-family:Arial, sans-serif; color:#f5f5f7;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+            <tr>
+                <td align="center" style="padding:32px 16px;">
+                    <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="background:#0e0e12; border-radius:16px; padding:32px;">
+                        <tr>
+                            <td style="font-size:22px; font-weight:700; padding-bottom:8px;">Potvrzeni rezervace - Dantier</td>
+                        </tr>
+                        <tr>
+                            <td style="font-size:14px; color:#a1a1aa; padding-bottom:24px;">Dekuji, ${name}. Rezervace byla prijata.</td>
+                        </tr>
+                        <tr>
+                            <td style="font-size:16px; font-weight:600; padding-bottom:12px;">Detail rezervace</td>
+                        </tr>
+                        <tr>
+                            <td style="font-size:14px; line-height:1.6;">
+                                <div><strong>Sluzba:</strong> ${service}</div>
+                                <div><strong>Datum:</strong> ${date}</div>
+                                <div><strong>Cas:</strong> ${time}</div>
+                                <div><strong>Telefon:</strong> ${phone}</div>
+                                <div><strong>Poznamka:</strong> ${note}</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-size:12px; color:#71717a; padding-top:24px;">Pokud potrebujete upravit termin, odpovezte na tento e-mail.</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>`
+}
+
+async function sendConfirmationEmail(env: Env, payload: ReservationPayload): Promise<{ ok: boolean; error?: string }> {
+    if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
+        return { ok: false, error: 'Email service neni nakonfigurovan.' }
+    }
+
+    const fromName = env.RESEND_FROM_NAME ? `${env.RESEND_FROM_NAME} ` : ''
+    const from = fromName ? `${fromName}<${env.RESEND_FROM_EMAIL}>` : env.RESEND_FROM_EMAIL
+    const html = buildEmailHtml(payload)
+
+    const response = await fetch(RESEND_API_URL, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            from,
+            to: payload.email,
+            subject: 'Potvrzeni rezervace Dantier',
+            html,
+        }),
+    })
+
+    if (!response.ok) {
+        return { ok: false, error: 'Nepodarilo se odeslat potvrzovaci email.' }
+    }
+
+    return { ok: true }
+}
+
+async function handleReservedSlots(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+    const date = url.searchParams.get('date')
+
+    if (!date || !DATE_RE.test(date)) {
+        return json(request, env, { error: 'Datum nema platny format (YYYY-MM-DD).' }, 400)
+    }
+
+    try {
+        const { results } = await env.DB.prepare(
+            `SELECT reservation_time FROM reservations WHERE reservation_date = ?1 ORDER BY reservation_time ASC`
+        )
+            .bind(date)
+            .all<{ reservation_time: string }>()
+
+        return json(request, env, {
+            date,
+            reservedTimes: results.map((row) => row.reservation_time),
+        })
+    } catch {
+        return json(request, env, { error: 'Nepodarilo se nacist rezervace.' }, 500)
     }
 }
 
@@ -194,10 +318,17 @@ async function handleCreateReservation(request: Request, env: Env): Promise<Resp
             .run()
 
         const reservationId = Number(result.meta.last_row_id ?? 0)
+        const emailResult = await sendConfirmationEmail(env, { name, email, phone, service, date, time, note })
+
+        const message = emailResult.ok
+            ? 'Rezervace byla ulozena. Brzy se vam ozveme s potvrzenim.'
+            : 'Rezervace byla ulozena, ale potvrzovaci email se nepodarilo odeslat.'
 
         return json(request, env, {
             reservationId,
-            message: 'Rezervace byla ulozena. Brzy se vam ozveme s potvrzenim.',
+            message,
+            emailSent: emailResult.ok,
+            emailError: emailResult.ok ? undefined : emailResult.error,
         }, 201)
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Neznama chyba databaze.'
@@ -223,6 +354,10 @@ export default {
 
         if (url.pathname === '/api/health' && request.method === 'GET') {
             return json(request, env, { ok: true, service: 'reservations-api' })
+        }
+
+        if (url.pathname === '/api/reservations' && request.method === 'GET') {
+            return handleReservedSlots(request, env)
         }
 
         if (url.pathname === '/api/reservations' && request.method === 'POST') {
