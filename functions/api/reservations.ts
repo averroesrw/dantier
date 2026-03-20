@@ -234,12 +234,13 @@ function buildEmailHtml(payload: ReservationPayload): string {
 }
 
 async function sendConfirmationEmail(env: Env, payload: ReservationPayload): Promise<{ ok: boolean; error?: string }> {
-    if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
+    if (!env.RESEND_API_KEY) {
         return { ok: false, error: 'Email service neni nakonfigurovan.' }
     }
 
+    const fromEmail = env.RESEND_FROM_EMAIL?.trim() || 'onboarding@resend.dev'
     const fromName = env.RESEND_FROM_NAME ? `${env.RESEND_FROM_NAME} ` : ''
-    const from = fromName ? `${fromName}<${env.RESEND_FROM_EMAIL}>` : env.RESEND_FROM_EMAIL
+    const from = fromName ? `${fromName}<${fromEmail}>` : fromEmail
     const html = buildEmailHtml(payload)
 
     const response = await fetch(RESEND_API_URL, {
@@ -257,7 +258,11 @@ async function sendConfirmationEmail(env: Env, payload: ReservationPayload): Pro
     })
 
     if (!response.ok) {
-        return { ok: false, error: 'Nepodarilo se odeslat potvrzovaci email.' }
+        const details = await response.text()
+        const message = details.trim()
+            ? `Nepodarilo se odeslat potvrzovaci email. ${details.trim()}`
+            : 'Nepodarilo se odeslat potvrzovaci email.'
+        return { ok: false, error: message }
     }
 
     return { ok: true }
