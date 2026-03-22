@@ -4,7 +4,7 @@ pages_build_output_dir = "./dist"
 
 [vars]
 ALLOWED_ORIGINS = "*"
-RESEND_FROM_EMAIL = "onboarding@resend.dev"
+RESEND_FROM_EMAIL = ""
 RESEND_FROM_NAME = "Dantier"
 
 [[d1_databases]]

@@ -56,7 +56,6 @@ const reservationId = ref<number | null>(null)
 const reservedTimes = ref<string[]>([])
 const isLoadingSlots = ref(false)
 const slotsError = ref('')
-const isPickerOpen = ref(false)
 
 const today = new Date()
 today.setHours(0, 0, 0, 0)
@@ -102,7 +101,6 @@ function resetForm() {
   form.date = ''
   form.time = ''
   form.note = ''
-  isPickerOpen.value = false
 }
 
 function isPhoneValid(value: string): boolean {
@@ -125,16 +123,6 @@ const selectedDateLabel = computed(() => {
     month: 'long',
     year: 'numeric',
   })
-})
-
-const selectedDateTimeLabel = computed(() => {
-  if (!form.date) {
-    return 'Vyberte datum a cas'
-  }
-
-  const dateLabel = selectedDateLabel.value
-  const timeLabel = form.time ? form.time : 'Vyberte cas'
-  return `${dateLabel} · ${timeLabel}`
 })
 
 const calendarDays = computed(() => {
@@ -206,7 +194,6 @@ function selectTime(time: string) {
   }
 
   form.time = time
-  isPickerOpen.value = false
 }
 
 async function loadReservedTimes(date: string) {
@@ -311,7 +298,6 @@ async function handleSubmit() {
 
     resetForm()
     setSelectedDate(formatDate(today))
-    isPickerOpen.value = false
   } catch (error) {
     submitError.value = error instanceof Error
       ? error.message
@@ -383,125 +369,102 @@ async function handleSubmit() {
         </div>
 
         <!-- Date & time -->
-        <div class="relative">
-          <button
-            type="button"
-            class="w-full text-left glass-card px-6 py-4 flex items-center justify-between"
-            @click="isPickerOpen = !isPickerOpen"
-            aria-haspopup="dialog"
-            :aria-expanded="isPickerOpen"
-          >
-            <div>
-              <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Datum a čas</span>
-              <p class="mt-2 text-base text-white capitalize">{{ selectedDateTimeLabel }}</p>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="glass-card p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Vybraný termín</span>
+                <p class="mt-2 text-base text-white capitalize">{{ selectedDateLabel }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="w-9 h-9 rounded-full border border-white/10 text-white/80 hover:text-white transition-colors"
+                  :class="canGoPrevMonth ? 'hover:bg-white/10' : 'opacity-40 cursor-not-allowed'"
+                  :disabled="!canGoPrevMonth"
+                  @click="goPrevMonth"
+                  aria-label="Předchozí měsíc"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  class="w-9 h-9 rounded-full border border-white/10 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                  @click="goNextMonth"
+                  aria-label="Další měsíc"
+                >
+                  ›
+                </button>
+              </div>
             </div>
-            <span class="text-xl text-white/70">▾</span>
-          </button>
 
-          <div v-if="isPickerOpen" class="fixed inset-0 z-30" @click="isPickerOpen = false" />
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-semibold text-white">{{ monthNames[currentMonth] }} {{ currentYear }}</h3>
+            </div>
 
-          <div
-            v-if="isPickerOpen"
-            class="absolute z-40 mt-3 w-full rounded-3xl border border-white/10 glass-dark p-6 shadow-2xl"
-          >
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="grid grid-cols-7 gap-2 text-xs text-text-muted mb-2">
+              <span v-for="label in weekdayLabels" :key="label" class="text-center">{{ label }}</span>
+            </div>
+
+            <div class="grid grid-cols-7 gap-2">
+              <template v-for="(day, index) in calendarDays" :key="day ? day.date : `empty-${index}`">
+                <div v-if="!day" class="h-9" />
+                <button
+                  v-else
+                  type="button"
+                  class="h-9 rounded-lg text-sm font-medium transition-all"
+                  :class="[
+                    day.isDisabled
+                      ? 'bg-white/5 text-text-muted border border-white/5 cursor-not-allowed'
+                      : day.isSelected
+                        ? 'glass-strong text-white'
+                        : 'bg-white/5 text-white border border-white/10 hover:bg-white/10',
+                    day.isToday && !day.isSelected ? 'ring-1 ring-accent/60' : ''
+                  ]"
+                  :disabled="day.isDisabled"
+                  @click="setSelectedDate(day.date)"
+                >
+                  {{ day.day }}
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <div class="glass-card p-6">
+            <div class="flex items-center justify-between mb-4">
               <div>
-                <div class="flex items-center justify-between mb-4">
-                  <div>
-                    <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Vybraný termín</span>
-                    <p class="mt-2 text-base text-white capitalize">{{ selectedDateLabel }}</p>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <button
-                      type="button"
-                      class="w-9 h-9 rounded-full border border-white/10 text-white/80 hover:text-white transition-colors"
-                      :class="canGoPrevMonth ? 'hover:bg-white/10' : 'opacity-40 cursor-not-allowed'"
-                      :disabled="!canGoPrevMonth"
-                      @click="goPrevMonth"
-                      aria-label="Předchozí měsíc"
-                    >
-                      ‹
-                    </button>
-                    <button
-                      type="button"
-                      class="w-9 h-9 rounded-full border border-white/10 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-                      @click="goNextMonth"
-                      aria-label="Další měsíc"
-                    >
-                      ›
-                    </button>
-                  </div>
-                </div>
-
-                <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-lg font-semibold text-white">{{ monthNames[currentMonth] }} {{ currentYear }}</h3>
-                </div>
-
-                <div class="grid grid-cols-7 gap-2 text-xs text-text-muted mb-2">
-                  <span v-for="label in weekdayLabels" :key="label" class="text-center">{{ label }}</span>
-                </div>
-
-                <div class="grid grid-cols-7 gap-2">
-                  <template v-for="(day, index) in calendarDays" :key="day ? day.date : `empty-${index}`">
-                    <div v-if="!day" class="h-9" />
-                    <button
-                      v-else
-                      type="button"
-                      class="h-9 rounded-lg text-sm font-medium transition-all"
-                      :class="[
-                        day.isDisabled
-                          ? 'bg-white/5 text-text-muted border border-white/5 cursor-not-allowed'
-                          : day.isSelected
-                            ? 'glass-strong text-white'
-                            : 'bg-white/5 text-white border border-white/10 hover:bg-white/10',
-                        day.isToday && !day.isSelected ? 'ring-1 ring-accent/60' : ''
-                      ]"
-                      :disabled="day.isDisabled"
-                      @click="setSelectedDate(day.date)"
-                    >
-                      {{ day.day }}
-                    </button>
-                  </template>
-                </div>
+                <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Dostupné časy</span>
+                <p class="mt-2 text-sm text-text-muted">
+                  {{ form.date ? `Datum: ${form.date}` : 'Nejprve zvolte datum' }}
+                </p>
               </div>
+              <span v-if="isLoadingSlots" class="text-xs text-text-muted">Načítám...</span>
+            </div>
 
-              <div>
-                <div class="flex items-center justify-between mb-4">
-                  <div>
-                    <span class="text-xs font-semibold tracking-[0.3em] uppercase text-text-secondary">Dostupné časy</span>
-                    <p class="mt-2 text-sm text-text-muted">
-                      {{ form.date ? `Datum: ${form.date}` : 'Nejprve zvolte datum' }}
-                    </p>
-                  </div>
-                  <span v-if="isLoadingSlots" class="text-xs text-text-muted">Načítám...</span>
-                </div>
+            <div v-if="slotsError" class="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-100 mb-4">
+              {{ slotsError }}
+            </div>
 
-                <div v-if="slotsError" class="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-100 mb-4">
-                  {{ slotsError }}
-                </div>
-
-                <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  <button
-                    v-for="time in times"
-                    :key="time"
-                    type="button"
-                    :disabled="!form.date || isReserved(time)"
-                    class="rounded-xl py-2 text-sm font-medium transition-all"
-                    :class="[
-                      !form.date
-                        ? 'bg-white/5 text-text-muted border border-white/5 cursor-not-allowed'
-                        : isReserved(time)
-                          ? 'bg-neutral-600/60 text-text-muted border border-white/5 cursor-not-allowed'
-                          : form.time === time
-                            ? 'glass-strong text-white'
-                            : 'glass text-white hover:bg-white/10'
-                    ]"
-                    @click="selectTime(time)"
-                  >
-                    {{ time }}
-                  </button>
-                </div>
-              </div>
+            <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              <button
+                v-for="time in times"
+                :key="time"
+                type="button"
+                :disabled="!form.date || isReserved(time)"
+                class="rounded-xl py-2 text-sm font-medium transition-all"
+                :class="[
+                  !form.date
+                    ? 'bg-white/5 text-text-muted border border-white/5 cursor-not-allowed'
+                    : isReserved(time)
+                      ? 'bg-neutral-600/40 text-text-muted border border-white/5 cursor-not-allowed'
+                      : form.time === time
+                        ? 'glass-strong text-white'
+                        : 'glass text-white hover:bg-white/10'
+                ]"
+                @click="selectTime(time)"
+              >
+                {{ time }}
+              </button>
             </div>
           </div>
         </div>
