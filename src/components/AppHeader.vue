@@ -61,7 +61,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
         <div class="flex flex-col gap-1.5 w-5">
           <span
             class="block h-[2px] bg-white rounded transition-all duration-300"
-            :class="isOpen ? 'rotate-45 translate-y-[5px]' : ''"
+            :class="isOpen ? 'rotate-45 translate-y-[8px]' : ''"
           />
           <span
             class="block h-[2px] bg-white rounded transition-all duration-300"
@@ -69,7 +69,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
           />
           <span
             class="block h-[2px] bg-white rounded transition-all duration-300"
-            :class="isOpen ? '-rotate-45 -translate-y-[5px]' : ''"
+            :class="isOpen ? '-rotate-45 -translate-y-[8px]' : ''"
           />
         </div>
       </button>
