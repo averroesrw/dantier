@@ -1,11 +1,11 @@
 <script setup lang="ts">
 const galleryImages = [
-  { src: './public/pictures/g-1.jpg', alt: 'Galerie 1' },
-  { src: './public/pictures/g-2.jpg', alt: 'Galerie 2' },
-  { src: './public/pictures/g-3.jpg', alt: 'Galerie 3' },
-  { src: './public/pictures/g-4.jpg', alt: 'Galerie 4' },
-  { src: './public/pictures/g-5.jpg', alt: 'Galerie 5' },
-  { src: './public/pictures/g-6.jpg', alt: 'Galerie 6' },
+  { src: '/pictures/g-1.jpg', alt: 'Galerie 1' },
+  { src: '/pictures/g-2.jpg', alt: 'Galerie 2' },
+  { src: '/pictures/g-3.jpg', alt: 'Galerie 3' },
+  { src: '/pictures/g-4.jpg', alt: 'Galerie 4' },
+  { src: '/pictures/g-5.jpg', alt: 'Galerie 5' },
+  { src: '/pictures/g-6.jpg', alt: 'Galerie 6' },
 ]
 </script>
 
